@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#f5f7fb">
+<title>Profile Finder · Team dashboard</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg aria-hidden="true" class="sprite" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="icon-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m3 9v-2a6 6 0 0 0-3-5.2"/></symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+  <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/></symbol>
+  <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+</svg>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="brand">
+      <span class="brand-mark"><svg aria-hidden="true"><use href="#icon-people"/></svg></span>
+      <div><span class="brand-name">Profile Finder</span><span class="brand-caption" id="workspaceName">Team dashboard</span></div>
+    </div>
+    <div class="header-actions">
+      <a class="btn quiet small" href="help.html">How it works</a>
+      <div class="account" id="account" hidden>
+        <span class="account-email" id="accountEmail"></span>
+        <button class="btn secondary small" id="signOut" type="button">Sign out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section id="bootView" class="center-view" aria-live="polite">
+    <div class="card message-card"><p id="bootMessage">Opening your dashboard…</p></div>
+  </section>
+
+  <section id="setupView" class="center-view" hidden>
+    <div class="card message-card">
+      <h1>Dashboard not set up yet</h1>
+      <p id="setupMessage">Add your Supabase project URL and publishable key to <code>config.js</code>, then reload this page.</p>
+    </div>
+  </section>
+
+  <section id="authView" class="center-view" hidden>
+    <form class="card auth-card" id="authForm" novalidate>
+      <h1 id="authTitle">Welcome back</h1>
+      <p class="muted" id="authDescription">Sign in with your approved team email.</p>
+      <p class="notice" id="authMessage" role="alert" hidden></p>
+      <div class="field" id="emailField">
+        <label for="authEmail">Work email</label>
+        <input id="authEmail" type="email" autocomplete="email" required>
+      </div>
+      <div class="field" id="passwordField">
+        <label for="authPassword" id="passwordLabel">Password</label>
+        <input id="authPassword" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn primary wide" id="authSubmit" type="submit">Sign in</button>
+      <div class="auth-links">
+        <button class="link" type="button" id="forgotLink">Forgot password?</button>
+        <span><span id="switchText">New to the team?</span> <button class="link" type="button" id="switchMode">Create an account</button></span>
+      </div>
+      <p class="guide-link">First time here? <a href="help.html">Read the step-by-step guide</a></p>
+    </form>
+  </section>
+
+  <section id="dashboardView" hidden>
+    <div class="intro">
+      <p class="eyebrow">Team outreach</p>
+      <h1>Your people, ready to connect.</h1>
+      <p class="muted">Your statuses are your own. Open a profile with Connect and it’s marked Connected for you. Use the switches to update your progress at any time.</p>
+    </div>
+
+    <div class="card list-card">
+      <div class="status-tabs" role="group" aria-label="Filter by status">
+        <button type="button" class="status-tab" data-filter="all" aria-pressed="true"><span class="label">All profiles</span><strong data-count="all">0</strong></button>
+        <button type="button" class="status-tab" data-filter="pending" aria-pressed="false"><span class="label">Pending</span><strong data-count="pending">0</strong></button>
+        <button type="button" class="status-tab" data-filter="contacted" aria-pressed="false"><span class="label">Contacted</span><strong data-count="contacted">0</strong></button>
+        <button type="button" class="status-tab" data-filter="connected" aria-pressed="false"><span class="label">Connected</span><strong data-count="connected">0</strong></button>
+      </div>
+      <div class="toolbar">
+        <div class="filter-wrap">
+          <label for="search" class="sr-only">Search profiles by name, role or company</label>
+          <svg aria-hidden="true"><use href="#icon-search"/></svg>
+          <input id="search" type="search" placeholder="Search by name, role or company…" autocomplete="off">
+          <button class="filter-reset" id="clearSearch" type="button" aria-label="Clear search" hidden><svg aria-hidden="true"><use href="#icon-close"/></svg></button>
+        </div>
+        <button class="btn quiet" id="refresh" type="button"><svg aria-hidden="true"><use href="#icon-refresh"/></svg><span>Refresh</span></button>
+      </div>
+      <div class="table-wrap" role="region" aria-label="Profiles" tabindex="0">
+        <table>
+          <caption class="sr-only">Team profiles with outreach status and a link to connect on LinkedIn</caption>
+          <colgroup><col class="col-num"><col><col class="col-toggle"><col class="col-toggle"><col class="col-connect"></colgroup>
+          <thead><tr><th scope="col" aria-label="Number">#</th><th scope="col">Name</th><th scope="col">Contacted</th><th scope="col">Connected</th><th scope="col"><span class="sr-only">Connect</span></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="list-footer"><p id="summary" role="status">Loading profiles…</p><p id="updated"></p></div>
+    </div>
+    <p class="note"><svg aria-hidden="true"><use href="#icon-info"/></svg><span>Connect opens LinkedIn in a new tab. Your Contacted and Connected statuses are visible only to you.</span></p>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
