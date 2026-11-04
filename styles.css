@@ -186,7 +186,7 @@ tbody tr:hover .empty { background:#fff; }
 
 .steps-list { margin:0 0 6px; padding-left:22px; font-size:14px; }
 .steps-list li { margin:6px 0; padding-left:4px; }
-.num, .legend li::before { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:#e8590c; color:#fff; font-size:11px; font-weight:700; vertical-align:1px; }
+.guide-section .num, .legend li::before { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:#e8590c; color:#fff; font-size:11px; font-weight:700; vertical-align:1px; }
 .legend { list-style:none; counter-reset:l; margin:0; padding:0; display:grid; gap:10px; font-size:14px; }
 .legend li { counter-increment:l; position:relative; padding-left:32px; }
 .legend li::before { content:counter(l); position:absolute; left:0; top:2px; }
