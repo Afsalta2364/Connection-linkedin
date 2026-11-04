@@ -1,7 +1,7 @@
 // Profile Finder service worker: makes the dashboard installable and quick to open.
 // Only this site's own files are cached. Requests to Supabase (sign-in and data)
 // are never intercepted or stored.
-const VERSION = "pf-v1";
+const VERSION = "pf-v2";
 const SHELL = [
   "./", "index.html", "help.html", "app.js", "config.js", "styles.css", "manifest.webmanifest",
   "fonts/geist-latin.woff2", "fonts/geist-mono-latin.woff2",

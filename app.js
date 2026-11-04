@@ -284,13 +284,13 @@ function setCount(el, value) {
   if (changed) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
 }
 
-// The category picker appears only when profiles have more than one category.
+// Category filter: shown whenever profiles have categories (after the category migration).
 function renderCategories() {
   const select = $("categoryFilter");
   const tally = new Map();
   for (const r of rows) if (r.category) tally.set(r.category, (tally.get(r.category) || 0) + 1);
   if (category !== "all" && !tally.has(category)) category = "all";
-  select.hidden = tally.size < 2;
+  select.hidden = tally.size === 0;
   const options = [["all", `All categories · ${rows.length.toLocaleString()}`],
     ...[...tally].sort((a, b) => a[0].localeCompare(b[0])).map(([name, n]) => [name, `${name} · ${n.toLocaleString()}`])];
   const html = options.map(([value, label]) => `<option value="${esc(value)}"${value === category ? " selected" : ""}>${esc(label)}</option>`).join("");
