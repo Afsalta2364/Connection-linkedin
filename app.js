@@ -38,12 +38,12 @@ class ApiError extends Error {
   constructor(message, status, code = "") { super(message); this.status = status; this.code = code; }
 }
 
-async function call(path, {method = "GET", body, auth = true, headers = {}, retried = false} = {}) {
+async function call(path, {method = "GET", body, auth = true, headers = {}, retried = false, keepalive = false} = {}) {
   const head = {apikey: cfg.supabasePublishableKey, "Content-Type": "application/json", Accept: "application/json", ...headers};
   if (auth) head.Authorization = "Bearer " + await accessToken();
   let response;
   try {
-    response = await fetch(baseUrl() + path, {method, headers: head, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000)});
+    response = await fetch(baseUrl() + path, {method, headers: head, body: body === undefined ? undefined : JSON.stringify(body), keepalive, signal: AbortSignal.timeout(20000)});
   } catch (_) {
     throw new ApiError("Couldn’t reach the server. Check your internet connection and try again.", 0);
   }
@@ -53,7 +53,7 @@ async function call(path, {method = "GET", body, auth = true, headers = {}, retr
   if (response.ok) return data;
   if (response.status === 401 && auth && !retried && session) {
     await refreshSession(true);
-    return call(path, {method, body, auth, headers, retried: true});
+    return call(path, {method, body, auth, headers, keepalive, retried: true});
   }
   throw new ApiError(errorMessage(path, response.status, data || {}), response.status, (data && data.code) || "");
 }
@@ -142,20 +142,64 @@ function setAuthMode(mode) {
 }
 
 function showAuth(message = "", success = false) {
-  rows = []; loaded = false; pending.clear();
+  rows = []; byId = new Map(); loaded = false; pending.clear(); currentList = []; drawn = 0;
   show("authView");
   if (authMode === "recover") setAuthMode("login");
   authMessage(message, success);
 }
 
+// ---------- local copy (instant start) ----------
+// The last list is kept on this device so the dashboard appears immediately,
+// then refreshes quietly. It is removed on sign-out.
+const CACHE_PREFIX = "pf_cache_v1:";
+const cacheKey = () => CACHE_PREFIX + (session?.email || "").toLowerCase();
+let cacheTimer = 0;
+
+function readCache() {
+  try {
+    const data = JSON.parse(localStorage.getItem(cacheKey()) || "null");
+    return data && Array.isArray(data.rows) ? data : null;
+  } catch (_) { return null; }
+}
+function saveCache() {
+  clearTimeout(cacheTimer);
+  cacheTimer = setTimeout(() => {
+    if (!session || !loaded) return;
+    try { localStorage.setItem(cacheKey(), JSON.stringify({rows, at: Date.now()})); }
+    catch (_) { /* storage full: the dashboard still works, it just loads from the network */ }
+  }, 400);
+}
+function clearCaches() {
+  for (const key of Object.keys(localStorage)) if (key.startsWith(CACHE_PREFIX)) localStorage.removeItem(key);
+}
+
 async function enterDashboard() {
   $("accountEmail").textContent = session.email;
   show("dashboardView");
+  const cached = readCache();
+  if (cached && !loaded) {
+    rows = cached.rows;
+    indexRows();
+    loaded = true; animateNext = true;
+    $("updated").textContent = "Updating…";
+  }
   render();
-  await loadRows();
+  await loadRows({quiet: !!cached});
 }
 
 // ---------- data ----------
+let byId = new Map();          // id -> row, for instant lookups
+let searchText = new Map();    // id -> lowercase name/role/company, prepared once for fast search
+let newestCreated = "";        // created_at of the newest profile we have
+let lastFullLoad = 0;
+const indexRows = () => {
+  byId = new Map(rows.map(r => [r.id, r]));
+  searchText = new Map(rows.map(r => [r.id, `${r.name} ${r.headline} ${r.organization}`.toLowerCase()]));
+  newestCreated = rows.reduce((max, r) => (r.created_at && r.created_at > max ? r.created_at : max), "");
+};
+const stamp = () => { $("updated").textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}); };
+const PROFILE_FIELDS = "id,name,headline,organization,source_url,created_at";
+
 async function loadRows({quiet = false} = {}) {
   if (loading || !session) return;
   loading = true;
@@ -164,20 +208,22 @@ async function loadRows({quiet = false} = {}) {
   if (!quiet) $("refresh").disabled = true;
   try {
     // Shared profile list, plus this user's own statuses (the database returns only theirs).
-    const [profiles, statuses] = await Promise.all([
-      fetchProfiles(),
-      fetchAll("pf_profile_status", {select: "profile_id,contacted,connected", order: "profile_id.asc"}),
-    ]);
+    const [profiles, statuses] = await Promise.all([fetchProfiles(), fetchStatuses()]);
     if (changes !== startedAt) { reloadAgain = true; return; }  // a save finished mid-load; this data may be stale
     const mine = new Map(statuses.map(s => [s.profile_id, s]));
-    const all = profiles.map(p => ({...p, contacted: !!mine.get(p.id)?.contacted, connected: !!mine.get(p.id)?.connected}));
-    // Keep local values for rows whose switch is still being saved.
-    const local = new Map(rows.map(r => [r.id, r]));
-    rows = all.map(r => pending.has(r.id) && local.has(r.id) ? {...r, contacted: local.get(r.id).contacted, connected: local.get(r.id).connected} : r);
+    rows = profiles.map(p => {
+      const local = byId.get(p.id);
+      // Keep local values for rows whose switch is still being saved.
+      if (local && pending.has(p.id)) return {...p, contacted: local.contacted, connected: local.connected};
+      return {...p, contacted: !!mine.get(p.id)?.contacted, connected: !!mine.get(p.id)?.connected};
+    });
+    indexRows();
     if (!loaded) animateNext = true;  // stagger rows in on first load
     loaded = true;
-    $("updated").textContent = "Updated " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+    lastFullLoad = Date.now();
+    stamp();
     render();
+    saveCache();
   } catch (error) {
     if (error.status === 401 && !session) return;
     if (!loaded) { $("rows").innerHTML = emptyRow("Couldn’t load profiles", esc(error.message), '<button class="btn secondary" type="button" data-action="reload">Try again</button>'); $("summary").textContent = "Unable to load profiles"; }
@@ -189,15 +235,52 @@ async function loadRows({quiet = false} = {}) {
   }
 }
 
+// Light refresh: only this user's statuses and any newly added profiles.
+async function refreshLight() {
+  if (loading || !session || !loaded) return;
+  if (Date.now() - lastFullLoad > 10 * 60 * 1000) return loadRows({quiet: true});  // full check every 10 minutes
+  loading = true;
+  const startedAt = changes;
+  try {
+    const [statuses, fresh] = await Promise.all([
+      fetchStatuses(),
+      newestCreated ? fetchProfiles({created_at: "gt." + newestCreated}) : Promise.resolve([]),
+    ]);
+    if (changes !== startedAt) return;  // a save finished mid-refresh; try again next time
+    let reshape = false;
+    const mine = new Map(statuses.map(s => [s.profile_id, s]));
+    const changed = [];
+    for (const r of rows) {
+      if (pending.has(r.id)) continue;
+      const contacted = !!mine.get(r.id)?.contacted, connected = !!mine.get(r.id)?.connected;
+      if (r.contacted !== contacted || r.connected !== connected) { r.contacted = contacted; r.connected = connected; changed.push(r.id); }
+    }
+    const added = fresh.filter(p => !byId.has(p.id)).map(p => ({...p, contacted: !!mine.get(p.id)?.contacted, connected: !!mine.get(p.id)?.connected}));
+    if (added.length) { rows = rows.concat(added); indexRows(); reshape = true; toast(`${added.length} new ${added.length === 1 ? "profile" : "profiles"}`); }
+    if (changed.length && filter !== "all") reshape = true;
+    if (reshape) render();
+    else { changed.forEach(paintRow); renderCounts(); }
+    stamp();
+    if (changed.length || added.length) saveCache();
+  } catch (_) {
+    /* quiet: the next refresh will try again */
+  } finally {
+    loading = false;
+  }
+}
+
+function fetchStatuses() {
+  return fetchAll("pf_profile_status", {select: "profile_id,contacted,connected", order: "profile_id.asc"});
+}
+
 // Profiles with their category. Until the category migration is applied the
 // column does not exist; fall back so the dashboard keeps working.
-async function fetchProfiles() {
-  const base = "id,name,headline,organization,source_url";
+async function fetchProfiles(extra = {}) {
   try {
-    return await fetchAll("pf_profiles", {select: base + ",category", order: "created_at.asc,id.asc"});
+    return await fetchAll("pf_profiles", {select: PROFILE_FIELDS + ",category", order: "created_at.asc,id.asc", ...extra});
   } catch (error) {
     if (error.code !== "42703") throw error;
-    return fetchAll("pf_profiles", {select: base, order: "created_at.asc,id.asc"});
+    return fetchAll("pf_profiles", {select: PROFILE_FIELDS, order: "created_at.asc,id.asc", ...extra});
   }
 }
 
@@ -212,28 +295,36 @@ async function fetchAll(table, params) {
   }
 }
 
+// Optimistic: the switch changes on screen immediately; the save runs in the
+// background and is undone only if the server rejects it.
 async function setStatus(id, field, value, {auto = false} = {}) {
-  const row = rows.find(r => r.id === id);
+  const row = byId.get(id);
   if (!row || row[field] === value) return;
   const previous = row[field];
   row[field] = value;
   pending.set(id, (pending.get(id) || 0) + 1);
-  render();
+  paintRow(id);
+  renderCounts();
+  leaveIfFiltered(id);
+  const name = row.name || "This profile";
+  const label = field === "connected" ? "Connected" : "Contacted";
+  if (auto) toast(`Connected · ${name}`);
   try {
     // Saves only this user's status; other users' switches are unaffected.
-    const result = await call("/rest/v1/rpc/pf_set_status", {method: "POST", body: {p_profile_id: id, ["p_" + field]: value}});
+    const result = await call("/rest/v1/rpc/pf_set_status", {method: "POST", body: {p_profile_id: id, ["p_" + field]: value}, keepalive: true});
     if (!Array.isArray(result) || result.length !== 1 || result[0][field] !== value) throw new ApiError("The change wasn’t confirmed. Please try again.", 502);
-    const name = row.name || "This profile";
-    const label = field === "connected" ? "Connected" : "Contacted";
-    toast(auto ? `Connected · ${name}` : `${label} ${value ? "on" : "off"} · ${name}`);
+    if (!auto) toast(`${label} ${value ? "on" : "off"} · ${name}`);
   } catch (error) {
     row[field] = previous;
     toast(error.status === 401 ? error.message : `Not saved. ${error.message}`);
+    if (!matches(row, filter)) render(); else paintRow(id);   // bring the row back if it had left the filter
+    renderCounts();
   } finally {
     changes += 1;
     const left = (pending.get(id) || 1) - 1;
     if (left) pending.set(id, left); else pending.delete(id);
-    render();
+    paintRow(id);
+    saveCache();
   }
 }
 
@@ -297,38 +388,113 @@ function renderCategories() {
   if (select._html !== html) { select.innerHTML = html; select._html = html; }
 }
 
+const inScope = r => category === "all" || r.category === category;
+
+function renderCounts() {
+  const counts = {all: 0, pending: 0, contacted: 0, connected: 0};
+  for (const r of rows) {
+    if (!inScope(r)) continue;
+    counts.all++;
+    if (r.contacted) counts.contacted++;
+    if (r.connected) counts.connected++;
+    if (!r.contacted && !r.connected) counts.pending++;
+  }
+  document.querySelectorAll("[data-count]").forEach(el => setCount(el, counts[el.dataset.count]));
+  return counts;
+}
+
+// Update one row's switches in place (no table rebuild).
+function paintRow(id) {
+  const row = byId.get(id);
+  if (!row) return;
+  const busy = pending.has(id);
+  for (const el of $("rows").querySelectorAll(`.switch[data-id="${CSS.escape(id)}"]`)) {
+    const on = !!row[el.dataset.field];
+    if (el.getAttribute("aria-checked") !== String(on)) el.setAttribute("aria-checked", String(on));
+    if (busy) el.setAttribute("aria-busy", "true"); else el.removeAttribute("aria-busy");
+  }
+}
+
+// When a change moves a row out of the current filter (e.g. Pending), slide it away.
+function leaveIfFiltered(id) {
+  const row = byId.get(id);
+  if (!row || matches(row, filter)) return;
+  const tr = $("rows").querySelector(`.switch[data-id="${CSS.escape(id)}"]`)?.closest("tr");
+  if (!tr) return;
+  tr.classList.add("leaving");
+  setTimeout(() => {
+    if (matches(row, filter)) { tr.classList.remove("leaving"); return; }   // changed back meanwhile
+    tr.remove();
+    if (!$("rows").querySelector("tr:not(.more)")) render(); else renderSummary();
+  }, 260);
+}
+
+// Rows are drawn in batches as you scroll, so long lists stay instant.
+const FIRST_BATCH = 120, NEXT_BATCH = 250;
+let currentList = [], drawn = 0;
+const moreObserver = "IntersectionObserver" in window
+  ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) drawMore(); }, {root: document.querySelector(".table-wrap"), rootMargin: "600px 0px"})
+  : null;
+
+function rowHtml({r, n}) {
+  const name = String(r.name || "Unnamed profile").trim() || "Unnamed profile";
+  const parts = name.split(/\s+/);
+  const initials = (Array.from(parts[0])[0] + (parts.length > 1 ? Array.from(parts[parts.length - 1])[0] : "")).toUpperCase();
+  const role = [r.headline, r.organization && r.organization !== "Check profile" ? r.organization : ""].filter(Boolean).join(" · ");
+  const url = profileUrl(r.source_url);
+  const connect = url
+    ? `<a class="btn connect" href="${esc(connectHref(url))}" target="_blank" rel="noopener noreferrer" data-id="${esc(r.id)}" aria-label="Connect with ${esc(name)} on LinkedIn">Connect ${icon("arrow")}</a>`
+    : '<span class="unavailable">No link</span>';
+  return `<tr><td class="num">${n}</td><td class="name-cell"><div class="person"><span class="avatar" aria-hidden="true">${esc(initials)}</span><span class="person-text"><span class="person-name">${esc(name)}</span>${role ? `<span class="person-role" title="${esc(role)}">${esc(role)}</span>` : ""}</span></div></td><td>${switchHtml(r, "contacted", name)}</td><td>${switchHtml(r, "connected", name)}</td><td>${connect}</td></tr>`;
+}
+
+function drawMore() {
+  const body = $("rows");
+  if (drawn >= currentList.length) return;
+  const next = currentList.slice(drawn, drawn + NEXT_BATCH);
+  drawn += next.length;
+  body.querySelector("tr.more")?.remove();
+  body.insertAdjacentHTML("beforeend", next.map(rowHtml).join("") + (drawn < currentList.length ? '<tr class="more" aria-hidden="true"><td colspan="5"></td></tr>' : ""));
+  const sentinel = body.querySelector("tr.more");
+  if (sentinel && moreObserver) moreObserver.observe(sentinel);
+}
+
+function renderSummary() {
+  const query = $("search").value.trim();
+  const scopeSize = category === "all" ? rows.length : rows.reduce((n, r) => n + (r.category === category), 0);
+  const shown = currentList.filter(({r}) => matches(r, filter)).length;
+  const label = category === "all" ? "profiles" : category;
+  $("summary").textContent = (filter !== "all" || query) ? `${shown.toLocaleString()} / ${scopeSize.toLocaleString()}` : `${scopeSize.toLocaleString()} ${label}`;
+}
+
 function render() {
   if (loaded) renderCategories();
-  const scope = category === "all" ? rows : rows.filter(r => r.category === category);
-  const counts = {all: scope.length, pending: 0, contacted: 0, connected: 0};
-  for (const r of scope) { if (r.contacted) counts.contacted++; if (r.connected) counts.connected++; if (!r.contacted && !r.connected) counts.pending++; }
-  document.querySelectorAll("[data-count]").forEach(el => setCount(el, counts[el.dataset.count]));
+  renderCounts();
   document.querySelectorAll(".status-tab").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.filter === filter)));
   const query = $("search").value.trim().toLowerCase();
   $("clearSearch").hidden = !query;
   if (!loaded) { $("rows").innerHTML = skeletonRows(); $("summary").textContent = "Loading…"; return; }
-  const list = scope.map((r, i) => ({r, n: i + 1})).filter(({r}) => matches(r, filter) && (!query || `${r.name} ${r.headline} ${r.organization}`.toLowerCase().includes(query)));
-  const label = category === "all" ? "profiles" : category;
-  $("summary").textContent = (filter !== "all" || query) ? `${list.length.toLocaleString()} / ${scope.length.toLocaleString()}` : `${scope.length.toLocaleString()} ${label}`;
+  const scope = category === "all" ? rows : rows.filter(inScope);
+  currentList = scope.map((r, i) => ({r, n: i + 1})).filter(({r}) => matches(r, filter) && (!query || (searchText.get(r.id) || "").includes(query)));
+  renderSummary();
   const focused = document.activeElement?.classList.contains("switch") ? document.activeElement.dataset.id + ":" + document.activeElement.dataset.field : null;
+  moreObserver?.disconnect();
+  drawn = 0;
   if (!rows.length) { $("rows").innerHTML = emptyRow("No profiles yet", "New profiles appear here."); return; }
-  if (!list.length) {
+  if (!currentList.length) {
     $("rows").innerHTML = query
       ? emptyRow("No matches", "Try another name or keyword.", '<button class="btn secondary" type="button" data-action="clear-search">Clear search</button>')
       : emptyRow("Nothing here yet", filter === "pending" ? "Everyone is contacted or connected." : `No one marked ${filter === "connected" ? "Connected" : "Contacted"} yet.`, '<button class="btn secondary" type="button" data-action="all">Show all</button>');
     return;
   }
-  $("rows").innerHTML = list.map(({r, n}) => {
-    const name = String(r.name || "Unnamed profile").trim() || "Unnamed profile";
-    const parts = name.split(/\s+/);
-    const initials = (Array.from(parts[0])[0] + (parts.length > 1 ? Array.from(parts[parts.length - 1])[0] : "")).toUpperCase();
-    const role = [r.headline, r.organization && r.organization !== "Check profile" ? r.organization : ""].filter(Boolean).join(" · ");
-    const url = profileUrl(r.source_url);
-    const connect = url
-      ? `<a class="btn connect" href="${esc(connectHref(url))}" target="_blank" rel="noopener noreferrer" data-id="${esc(r.id)}" aria-label="Connect with ${esc(name)} on LinkedIn">Connect ${icon("arrow")}</a>`
-      : '<span class="unavailable">No link</span>';
-    return `<tr><td class="num">${n}</td><td class="name-cell"><div class="person"><span class="avatar tone-${(n - 1) % 4}" aria-hidden="true">${esc(initials)}</span><span class="person-text"><span class="person-name">${esc(name)}</span>${role ? `<span class="person-role" title="${esc(role)}">${esc(role)}</span>` : ""}</span></div></td><td>${switchHtml(r, "contacted", name)}</td><td>${switchHtml(r, "connected", name)}</td><td>${connect}</td></tr>`;
-  }).join("");
+  $("rows").innerHTML = "";
+  drawn = 0;
+  const first = currentList.slice(0, FIRST_BATCH);
+  drawn = first.length;
+  $("rows").innerHTML = first.map(rowHtml).join("") + (drawn < currentList.length ? '<tr class="more" aria-hidden="true"><td colspan="5"></td></tr>' : "");
+  const sentinel = $("rows").querySelector("tr.more");
+  if (sentinel && moreObserver) moreObserver.observe(sentinel);
+  else if (sentinel) { while (drawn < currentList.length) drawMore(); }   // very old browsers: draw everything
   if (animateNext) {
     animateNext = false;
     const body = $("rows");
@@ -338,7 +504,7 @@ function render() {
   }
   if (focused) {
     const [id, field] = focused.split(":");
-    Array.from(document.querySelectorAll(".switch")).find(el => el.dataset.id === id && el.dataset.field === field)?.focus();
+    $("rows").querySelector(`.switch[data-id="${CSS.escape(id)}"][data-field="${field}"]`)?.focus();
   }
 }
 
@@ -347,7 +513,7 @@ function toast(message) {
   t.textContent = message;
   t.classList.add("show");
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove("show"), 4000);
+  t._timer = setTimeout(() => t.classList.remove("show"), 3200);
 }
 
 // ---------- events ----------
@@ -360,12 +526,13 @@ $("rows").addEventListener("click", event => {
   if (action === "all") { filter = "all"; render(); }
 });
 
-// Clicking Connect opens LinkedIn and marks the profile Connected. The update is
-// deferred so re-rendering the table cannot interfere with opening the new tab.
+// Clicking Connect opens LinkedIn and marks the profile Connected right away.
+// Only the row's switch is updated (the link itself is untouched), so opening
+// LinkedIn is never delayed, and the save survives the switch to the LinkedIn app.
 function markConnected(event) {
   const link = event.target.closest("a.connect");
   if (!link || (event.type === "auxclick" && event.button !== 1)) return;
-  setTimeout(() => setStatus(link.dataset.id, "connected", true, {auto: true}), 0);
+  setStatus(link.dataset.id, "connected", true, {auto: true});
 }
 $("rows").addEventListener("click", markConnected);
 $("rows").addEventListener("auxclick", markConnected);
@@ -374,7 +541,8 @@ document.querySelectorAll(".status-tab").forEach(tab => tab.addEventListener("cl
   if (filter !== tab.dataset.filter) animateNext = true;
   filter = tab.dataset.filter; render();
 }));
-$("search").addEventListener("input", render);
+let searchFrame = 0;
+$("search").addEventListener("input", () => { cancelAnimationFrame(searchFrame); searchFrame = requestAnimationFrame(render); });
 $("categoryFilter").addEventListener("change", event => {
   category = event.target.value;
   localStorage.setItem("pf_category", category);
@@ -433,6 +601,7 @@ async function requireMember() {
 
 async function signOut(showMessage = true) {
   const token = session?.access_token;
+  clearCaches();
   dropSession();
   if (token) fetch(baseUrl() + "/auth/v1/logout?scope=local", {method: "POST", headers: {apikey: cfg.supabasePublishableKey, Authorization: "Bearer " + token}}).catch(() => {});
   if (showMessage) showAuth("You’ve signed out.", true);
@@ -440,9 +609,9 @@ async function signOut(showMessage = true) {
 $("signOut").addEventListener("click", () => signOut());
 
 // Keep the list fresh while the tab is visible, so teammates see each other's changes.
-setInterval(() => { if (!document.hidden && loaded && session) loadRows({quiet: true}); }, REFRESH_MS);
-document.addEventListener("visibilitychange", () => { if (!document.hidden && loaded && session) loadRows({quiet: true}); });
-window.addEventListener("storage", event => { if (event.key === SESSION_KEY && !event.newValue && session) { session = null; showAuth("You signed out in another tab."); } });
+setInterval(() => { if (!document.hidden && loaded && session) refreshLight(); }, REFRESH_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && loaded && session) refreshLight(); });
+window.addEventListener("storage", event => { if (event.key === SESSION_KEY && !event.newValue && session) { session = null; clearCaches(); showAuth("You signed out in another tab."); } });
 
 // ---------- start ----------
 async function boot() {
@@ -477,6 +646,13 @@ async function boot() {
     const stored = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
     if (stored?.access_token && stored?.refresh_token) {
       session = stored;
+      if (readCache()) {
+        enterDashboard();
+        call("/rest/v1/rpc/pf_is_member", {method: "POST", body: {}}).then(member => {
+          if (member !== true) { signOut(false); showAuth("This email doesn’t have team access yet. Ask your administrator to add it."); }
+        }).catch(() => {});
+        return;
+      }
       await requireMember();
       return;
     }
@@ -508,6 +684,12 @@ $("installApp").addEventListener("click", async () => {
 });
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+
+if (!configProblem()) {
+  const hint = document.createElement("link");
+  hint.rel = "preconnect"; hint.href = baseUrl(); hint.crossOrigin = "anonymous";
+  document.head.appendChild(hint);
 }
 
 setAuthMode("login");
