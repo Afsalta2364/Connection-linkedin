@@ -2,11 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#f5f7fb">
-<title>Profile Finder · Team dashboard</title>
+<meta name="theme-color" content="#f1efea">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Your team’s profile list with one-click LinkedIn connect.">
+<meta name="application-name" content="Profiles">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Profiles">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Profile Finder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,6 +29,7 @@
   <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
   <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
   <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/></symbol>
+  <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19h14"/></symbol>
   <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
 </svg>
 
@@ -26,6 +40,7 @@
       <div><span class="brand-name">Profile Finder</span><span class="brand-caption" id="workspaceName">Team dashboard</span></div>
     </div>
     <div class="header-actions">
+      <button class="btn secondary small install" id="installApp" type="button" aria-label="Install the app" hidden><svg aria-hidden="true"><use href="#icon-download"/></svg><span>Install</span></button>
       <a class="btn quiet small" href="help.html">Guide</a>
       <div class="account" id="account" hidden>
         <span class="account-email" id="accountEmail"></span>

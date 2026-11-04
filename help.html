@@ -2,11 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#f5f7fb">
-<title>How it works · Profile Finder</title>
+<meta name="theme-color" content="#f1efea">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Your team’s profile list with one-click LinkedIn connect.">
+<meta name="application-name" content="Profiles">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Profiles">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Guide · Profile Finder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body class="guide">
@@ -36,6 +49,7 @@
       <a href="#create-account">Create your account</a>
       <a href="#sign-in">Sign in</a>
       <a href="#dashboard">Using the dashboard</a>
+      <a href="#install">Install the app</a>
       <a href="#statuses">Statuses explained</a>
       <a href="#help">Problems and answers</a>
     </nav>
@@ -55,13 +69,13 @@
     <h2>What you can do</h2>
     <ul class="feature-grid">
       <li><strong>See the full list</strong><span>Every profile your team has collected, with name, job title and company.</span></li>
-      <li><strong>Connect in one click</strong><span>The <em>Connect</em> button opens the person’s LinkedIn profile in a new tab.</span></li>
+      <li><strong>Connect in one click</strong><span>On phones, <em>Connect</em> opens the LinkedIn app. On computers it opens LinkedIn in your browser.</span></li>
       <li><strong>Automatic tracking</strong><span>Clicking <em>Connect</em> marks that person as <em>Connected</em> for you.</span></li>
       <li><strong>Contacted switch</strong><span>Turn it on when you have messaged someone, so you remember.</span></li>
       <li><strong>Connected switch</strong><span>Shows who you have connected with. Turn it off if you didn’t connect.</span></li>
       <li><strong>Your progress is private</strong><span>Your switches are only yours. Teammates don’t see them, and you don’t see theirs.</span></li>
       <li><strong>Filter and search</strong><span>See only Pending, Contacted or Connected people, or search by name, role or company.</span></li>
-      <li><strong>Works on your phone</strong><span>Open the same address on your phone and sign in.</span></li>
+      <li><strong>Install it as an app</strong><span>Add it to your phone’s home screen or your computer, like any other app.</span></li>
     </ul>
   </section>
 
@@ -115,14 +129,14 @@
       <li><strong>Refresh.</strong> Loads the newest profiles. The list also refreshes by itself every 30 seconds.</li>
       <li><strong>Contacted switch.</strong> Turn it on when you have sent a message to this person. Blue means on.</li>
       <li><strong>Connected switch.</strong> On (green) means you have connected. It turns on by itself when you click Connect.</li>
-      <li><strong>Connect.</strong> Opens the person’s LinkedIn profile in a new tab, so you can send your invitation.</li>
+      <li><strong>Connect.</strong> Opens the person’s profile in the LinkedIn app on phones, or in your browser on a computer.</li>
       <li><strong>Sign out.</strong> Use this on shared or public computers.</li>
     </ol>
 
     <h3>How to connect with someone</h3>
     <ol class="steps-list">
       <li>Find a person whose switches are both off (they are <em>Pending</em>).</li>
-      <li>Click <strong>Connect</strong> <span class="num">1</span>. LinkedIn opens in a new tab.</li>
+      <li>Click <strong>Connect</strong> <span class="num">1</span>. The profile opens in the LinkedIn app (phone) or a new browser tab (computer).</li>
       <li>On LinkedIn, click <strong>Connect</strong> and send your invitation.</li>
       <li>Back on the dashboard, the <strong>Connected</strong> switch <span class="num">2</span> is already on, and a message confirms it.</li>
     </ol>
@@ -145,8 +159,38 @@
         <img src="guide/mobile.jpg" width="390" height="844" loading="lazy" alt="The dashboard on a phone screen, with counters, search, switches and Connect buttons.">
         <figcaption>The same dashboard on a phone.</figcaption>
       </figure>
-      <p>Open the same web address in your phone’s browser and sign in with the same email and password. Everything works the same way, and your progress is the same on every device.</p>
+      <p>Open the same web address on your phone and sign in with the same email and password. Your progress is the same on every device. For the best experience, <a href="#install">install it as an app</a>.</p>
     </div>
+  </section>
+
+  <section id="install" class="guide-section">
+    <h2>Install the app</h2>
+    <p>Profile Finder can be installed like a normal app. It gets its own icon, opens in its own window without browser bars, and starts faster.</p>
+    <h3>iPhone or iPad</h3>
+    <ol class="steps-list">
+      <li>Open the dashboard in <strong>Safari</strong>.</li>
+      <li>Tap the <strong>Share</strong> button (the square with an arrow).</li>
+      <li>Tap <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
+      <li>Open <strong>Profiles</strong> from your home screen and sign in once.</li>
+    </ol>
+    <h3>Android</h3>
+    <ol class="steps-list">
+      <li>Open the dashboard in <strong>Chrome</strong>.</li>
+      <li>Tap <strong>Install</strong> at the top of the dashboard. If you don’t see it, tap the <strong>⋮</strong> menu, then <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li>
+      <li>Open <strong>Profiles</strong> from your home screen or app drawer.</li>
+    </ol>
+    <h3>Computer (Chrome or Edge)</h3>
+    <ol class="steps-list">
+      <li>Click <strong>Install</strong> at the top of the dashboard, or the install icon at the right end of the address bar.</li>
+      <li>Click <strong>Install</strong> to confirm. Profiles opens in its own window and appears with your other apps.</li>
+    </ol>
+    <p class="tip"><strong>Mac with Safari:</strong> choose <strong>File → Add to Dock</strong>.</p>
+    <h3>Opening profiles in the LinkedIn app</h3>
+    <ul class="steps-list">
+      <li><strong>Android:</strong> Connect opens the LinkedIn app straight away. Without the app, the profile opens in your browser.</li>
+      <li><strong>iPhone:</strong> Connect opens the LinkedIn app when it’s installed. If it keeps opening in Safari instead, press and hold the Connect button once and choose <strong>Open in “LinkedIn”</strong>. Your iPhone remembers this.</li>
+      <li><strong>Computer:</strong> LinkedIn doesn’t let websites open its desktop app, so profiles open in your browser.</li>
+    </ul>
   </section>
 
   <section id="statuses" class="guide-section">

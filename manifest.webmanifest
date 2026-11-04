@@ -1,0 +1,23 @@
+{
+  "name": "Profile Finder",
+  "short_name": "Profiles",
+  "description": "Your team’s profile list with one-click LinkedIn connect and private progress tracking.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f1efea",
+  "theme_color": "#f1efea",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Pending profiles", "short_name": "Pending", "url": "./#pending", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "How it works", "short_name": "Guide", "url": "./help.html", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -225,6 +225,19 @@ async function setStatus(id, field, value, {auto = false} = {}) {
 }
 
 // ---------- rendering ----------
+// Phones: open the LinkedIn app when it is installed.
+// Android: an intent link opens the app directly and falls back to the website.
+// iPhone/iPad: the normal https link is a "universal link" that iOS hands to the app.
+// Desktop: LinkedIn offers no way to open its desktop app, so the browser is used.
+const PLATFORM = /Android/i.test(navigator.userAgent) ? "android"
+  : (/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) ? "ios" : "desktop";
+
+function connectHref(url) {
+  if (PLATFORM !== "android") return url;
+  const u = new URL(url);
+  return `intent://${u.host}${u.pathname}#Intent;scheme=https;package=com.linkedin.android;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+
 function profileUrl(source) {
   try {
     const url = new URL(source);
@@ -283,7 +296,7 @@ function render() {
     const role = [r.headline, r.organization && r.organization !== "Check profile" ? r.organization : ""].filter(Boolean).join(" · ");
     const url = profileUrl(r.source_url);
     const connect = url
-      ? `<a class="btn connect" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-id="${esc(r.id)}" aria-label="Connect with ${esc(name)} on LinkedIn (opens in a new tab)">Connect ${icon("arrow")}</a>`
+      ? `<a class="btn connect" href="${esc(connectHref(url))}" target="_blank" rel="noopener noreferrer" data-id="${esc(r.id)}" aria-label="Connect with ${esc(name)} on LinkedIn">Connect ${icon("arrow")}</a>`
       : '<span class="unavailable">No link</span>';
     return `<tr><td class="num">${n}</td><td class="name-cell"><div class="person"><span class="avatar tone-${(n - 1) % 4}" aria-hidden="true">${esc(initials)}</span><span class="person-text"><span class="person-name">${esc(name)}</span>${role ? `<span class="person-role" title="${esc(role)}">${esc(role)}</span>` : ""}</span></div></td><td>${switchHtml(r, "contacted", name)}</td><td>${switchHtml(r, "connected", name)}</td><td>${connect}</td></tr>`;
   }).join("");
@@ -402,6 +415,12 @@ async function boot() {
   const problem = configProblem();
   if (problem) { $("setupMessage").textContent = problem; show("setupView"); return; }
 
+  // App shortcut: open straight to the Pending filter.
+  if (window.location.hash === "#pending") {
+    filter = "pending";
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  }
+
   // Links from confirmation and password-reset emails return here with tokens in the URL fragment.
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   if (fragment.has("access_token") || fragment.has("error_description") || fragment.has("error")) {
@@ -431,6 +450,29 @@ async function boot() {
     dropSession();
   }
   showAuth();
+}
+
+// ---------- installable app ----------
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();          // show our own Install button instead of the browser banner
+  installPrompt = event;
+  $("installApp").hidden = false;
+});
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  $("installApp").hidden = true;
+  toast("Installed · open Profiles from your apps");
+});
+$("installApp").addEventListener("click", async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  $("installApp").hidden = true;
+});
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 
 setAuthMode("login");
