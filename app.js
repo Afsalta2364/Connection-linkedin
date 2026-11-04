@@ -15,6 +15,7 @@ let session = null;          // {access_token, refresh_token, expires_at, email}
 let refreshing = null;       // shared promise while a token refresh is running
 let rows = [];               // [{id, name, headline, organization, source_url, contacted, connected}]
 let filter = "all";
+let category = localStorage.getItem("pf_category") || "all";   // profile category picker
 let loaded = false, loading = false, authMode = "login";
 let changes = 0;             // bumps after every saved or failed status change
 let animateNext = false;     // play the row entrance animation on the next render
@@ -34,7 +35,7 @@ const pageUrl = () => window.location.origin + window.location.pathname;
 
 // ---------- Supabase requests ----------
 class ApiError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  constructor(message, status, code = "") { super(message); this.status = status; this.code = code; }
 }
 
 async function call(path, {method = "GET", body, auth = true, headers = {}, retried = false} = {}) {
@@ -54,7 +55,7 @@ async function call(path, {method = "GET", body, auth = true, headers = {}, retr
     await refreshSession(true);
     return call(path, {method, body, auth, headers, retried: true});
   }
-  throw new ApiError(errorMessage(path, response.status, data || {}), response.status);
+  throw new ApiError(errorMessage(path, response.status, data || {}), response.status, (data && data.code) || "");
 }
 
 function errorMessage(path, status, data) {
@@ -164,7 +165,7 @@ async function loadRows({quiet = false} = {}) {
   try {
     // Shared profile list, plus this user's own statuses (the database returns only theirs).
     const [profiles, statuses] = await Promise.all([
-      fetchAll("pf_profiles", {select: "id,name,headline,organization,source_url", order: "created_at.asc,id.asc"}),
+      fetchProfiles(),
       fetchAll("pf_profile_status", {select: "profile_id,contacted,connected", order: "profile_id.asc"}),
     ]);
     if (changes !== startedAt) { reloadAgain = true; return; }  // a save finished mid-load; this data may be stale
@@ -185,6 +186,18 @@ async function loadRows({quiet = false} = {}) {
     loading = false;
     $("refresh").disabled = false;
     if (reloadAgain) loadRows({quiet: true});
+  }
+}
+
+// Profiles with their category. Until the category migration is applied the
+// column does not exist; fall back so the dashboard keeps working.
+async function fetchProfiles() {
+  const base = "id,name,headline,organization,source_url";
+  try {
+    return await fetchAll("pf_profiles", {select: base + ",category", order: "created_at.asc,id.asc"});
+  } catch (error) {
+    if (error.code !== "42703") throw error;
+    return fetchAll("pf_profiles", {select: base, order: "created_at.asc,id.asc"});
   }
 }
 
@@ -271,16 +284,32 @@ function setCount(el, value) {
   if (changed) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
 }
 
+// The category picker appears only when profiles have more than one category.
+function renderCategories() {
+  const select = $("categoryFilter");
+  const tally = new Map();
+  for (const r of rows) if (r.category) tally.set(r.category, (tally.get(r.category) || 0) + 1);
+  if (category !== "all" && !tally.has(category)) category = "all";
+  select.hidden = tally.size < 2;
+  const options = [["all", `All categories · ${rows.length.toLocaleString()}`],
+    ...[...tally].sort((a, b) => a[0].localeCompare(b[0])).map(([name, n]) => [name, `${name} · ${n.toLocaleString()}`])];
+  const html = options.map(([value, label]) => `<option value="${esc(value)}"${value === category ? " selected" : ""}>${esc(label)}</option>`).join("");
+  if (select._html !== html) { select.innerHTML = html; select._html = html; }
+}
+
 function render() {
-  const counts = {all: rows.length, pending: 0, contacted: 0, connected: 0};
-  for (const r of rows) { if (r.contacted) counts.contacted++; if (r.connected) counts.connected++; if (!r.contacted && !r.connected) counts.pending++; }
+  if (loaded) renderCategories();
+  const scope = category === "all" ? rows : rows.filter(r => r.category === category);
+  const counts = {all: scope.length, pending: 0, contacted: 0, connected: 0};
+  for (const r of scope) { if (r.contacted) counts.contacted++; if (r.connected) counts.connected++; if (!r.contacted && !r.connected) counts.pending++; }
   document.querySelectorAll("[data-count]").forEach(el => setCount(el, counts[el.dataset.count]));
   document.querySelectorAll(".status-tab").forEach(tab => tab.setAttribute("aria-pressed", String(tab.dataset.filter === filter)));
   const query = $("search").value.trim().toLowerCase();
   $("clearSearch").hidden = !query;
   if (!loaded) { $("rows").innerHTML = skeletonRows(); $("summary").textContent = "Loading…"; return; }
-  const list = rows.map((r, i) => ({r, n: i + 1})).filter(({r}) => matches(r, filter) && (!query || `${r.name} ${r.headline} ${r.organization}`.toLowerCase().includes(query)));
-  $("summary").textContent = (filter !== "all" || query) ? `${list.length.toLocaleString()} / ${rows.length.toLocaleString()}` : `${rows.length.toLocaleString()} profiles`;
+  const list = scope.map((r, i) => ({r, n: i + 1})).filter(({r}) => matches(r, filter) && (!query || `${r.name} ${r.headline} ${r.organization}`.toLowerCase().includes(query)));
+  const label = category === "all" ? "profiles" : category;
+  $("summary").textContent = (filter !== "all" || query) ? `${list.length.toLocaleString()} / ${scope.length.toLocaleString()}` : `${scope.length.toLocaleString()} ${label}`;
   const focused = document.activeElement?.classList.contains("switch") ? document.activeElement.dataset.id + ":" + document.activeElement.dataset.field : null;
   if (!rows.length) { $("rows").innerHTML = emptyRow("No profiles yet", "New profiles appear here."); return; }
   if (!list.length) {
@@ -346,6 +375,12 @@ document.querySelectorAll(".status-tab").forEach(tab => tab.addEventListener("cl
   filter = tab.dataset.filter; render();
 }));
 $("search").addEventListener("input", render);
+$("categoryFilter").addEventListener("change", event => {
+  category = event.target.value;
+  localStorage.setItem("pf_category", category);
+  animateNext = true;
+  render();
+});
 $("clearSearch").addEventListener("click", () => { $("search").value = ""; render(); $("search").focus(); });
 $("refresh").addEventListener("click", () => loadRows());
 
